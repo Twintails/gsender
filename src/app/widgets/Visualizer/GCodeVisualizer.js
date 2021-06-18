@@ -80,8 +80,11 @@ class GCodeVisualizer {
                 const color = motionColor[motion] || defaultColor;
                 const opacity = (motion === 'G0') ? 0.1 : 1;
 
-                this.colors.push(...color.toArray(), opacity);
-                this.vertices.push(new THREE.Vector3(v2.x, v2.y, v2.z));
+                this.colors.push(...color.toArray(), opacity, ...color.toArray(), opacity);
+                this.vertices.push(
+                    new THREE.Vector3(v1.x, v1.y, v1.z),
+                    new THREE.Vector3(v2.x, v2.y, v2.z)
+                );
             },
             // @param {object} modal The modal object.
             // @param {object} v1 A 3D vector of the start point.
@@ -118,13 +121,13 @@ class GCodeVisualizer {
                     const z = ((v2.z - v1.z) / points.length) * i + v1.z;
 
                     if (plane === 'G17') { // XY-plane
-                        this.vertices.push(new THREE.Vector3(point.x, point.y, z));
+                        this.vertices.push(new THREE.Vector3(point.x, point.y, point.z), new THREE.Vector3(point.x, point.y, z));
                     } else if (plane === 'G18') { // ZX-plane
-                        this.vertices.push(new THREE.Vector3(point.y, z, point.x));
+                        this.vertices.push(new THREE.Vector3(point.x, point.y, point.z), new THREE.Vector3(point.y, z, point.x));
                     } else if (plane === 'G19') { // YZ-plane
-                        this.vertices.push(new THREE.Vector3(z, point.x, point.y));
+                        this.vertices.push(new THREE.Vector3(point.x, point.y, point.z), new THREE.Vector3(z, point.x, point.y));
                     }
-                    this.colors.push(...color.toArray(), 1);
+                    this.colors.push(...color.toArray(), 1, ...color.toArray(), 1);
                 }
             }
         });
@@ -149,17 +152,14 @@ class GCodeVisualizer {
 
 
         this.geometry.setFromPoints(this.vertices);
-        /* Set spindle off vertices to opacity 0 */
-        if (laserMode) {
+        if (laserMode && this.spindleSpeeds.size > 0) {
             this.updateLaserModeColors();
         }
-        console.log(this.frames);
-        console.log(this.spindleSpeeds);
-        console.log(this.vertices.length);
-        console.log(this.frames.length);
 
         const colorBuffer = new THREE.BufferAttribute(this.getColorTypedArray(), 4);
         this.geometry.setAttribute('color', colorBuffer);
+        /* Set spindle off vertices to opacity 0 */
+
 
         const workpiece = new THREE.LineSegments(
             this.geometry.toNonIndexed(),
@@ -193,19 +193,19 @@ class GCodeVisualizer {
     updateLaserModeColors() {
         const { G1Color } = this.theme;
         const defaultColor = new THREE.Color(G1Color);
-        const fillColor = new THREE.Color('#FF0000');
+        const fillColor = new THREE.Color('#d97706');
         const maxSpindleValue = Math.max(...[...this.spindleSpeeds]);
 
         for (let i = 0; i < this.frames.length; ++i) {
             const { spindleOn, spindleSpeed } = this.frames[i];
             const offsetIndex = (this.frames[i].vertexIndex) * 4;
             if (spindleOn) {
-                let opacity = spindleSpeed / maxSpindleValue;
+                let opacity = (maxSpindleValue === 0) ? 1 : (spindleSpeed / maxSpindleValue);
                 const color = [...defaultColor.toArray(), opacity];
-                this.colors.splice(offsetIndex, 4, ...color);
+                this.colors.splice(offsetIndex, 8, ...[...color, ...color]);
             } else {
-                const color = [...fillColor.toArray(), 0];
-                this.colors.splice(offsetIndex, 4, ...color);
+                const color = [...fillColor.toArray(), 0.2];
+                this.colors.splice(offsetIndex, 8, ...[...color, ...color]);
             }
         }
 
