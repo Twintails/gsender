@@ -41,6 +41,9 @@ class GCodeVisualizer {
         this.theme = theme;
         this.vertices = [];
         this.colors = [];
+        this.spindleOn = false;
+        this.spindleSpeeds = new Set();
+        this.spindleSpeed = 0;
 
         // Example
         // [
@@ -57,6 +60,7 @@ class GCodeVisualizer {
 
     render(gcode) {
         const { cuttingCoordinateLines, G0Color, G1Color, G2Color, G3Color } = this.theme;
+        const laserMode = true;
 
         const defaultColor = new THREE.Color(cuttingCoordinateLines);
 
@@ -75,6 +79,7 @@ class GCodeVisualizer {
                 const { motion } = modal;
                 const color = motionColor[motion] || defaultColor;
                 const opacity = (motion === 'G0') ? 0.1 : 1;
+
                 this.colors.push(...color.toArray(), opacity);
                 this.vertices.push(new THREE.Vector3(v2.x, v2.y, v2.z));
             },
@@ -131,18 +136,33 @@ class GCodeVisualizer {
         }
 
         toolpath.loadFromStringSync(gcode, (line, index) => {
+            if (laserMode) {
+                this.updateSpindleStateFromLine(line);
+            }
             this.frames.push({
                 data: line,
-                vertexIndex: this.vertices.length // remember current vertex index
+                vertexIndex: this.vertices.length, // remember current vertex index
+                spindleOn: this.spindleOn, // Whether the spindle is on or not
+                spindleSpeed: this.spindleSpeed
             });
         });
 
+
         this.geometry.setFromPoints(this.vertices);
+        /* Set spindle off vertices to opacity 0 */
+        if (laserMode) {
+            this.updateLaserModeColors();
+        }
+        console.log(this.frames);
+        console.log(this.spindleSpeeds);
+        console.log(this.vertices.length);
+        console.log(this.frames.length);
+
         const colorBuffer = new THREE.BufferAttribute(this.getColorTypedArray(), 4);
         this.geometry.setAttribute('color', colorBuffer);
 
-        const workpiece = new THREE.Line(
-            this.geometry,
+        const workpiece = new THREE.LineSegments(
+            this.geometry.toNonIndexed(),
             new THREE.PointsMaterial({
                 color: defaultColor,
                 vertexColors: true,
@@ -151,7 +171,8 @@ class GCodeVisualizer {
             })
         );
 
-        workpiece.computeLineDistances();
+        console.log(this.geometry);
+        console.log(workpiece.geometry);
 
         this.group.add(workpiece);
 
@@ -169,6 +190,54 @@ class GCodeVisualizer {
         return new Float32Array(this.colors);
     }
 
+    updateLaserModeColors() {
+        const { G1Color } = this.theme;
+        const defaultColor = new THREE.Color(G1Color);
+        const fillColor = new THREE.Color('#FF0000');
+        const maxSpindleValue = Math.max(...[...this.spindleSpeeds]);
+
+        for (let i = 0; i < this.frames.length; ++i) {
+            const { spindleOn, spindleSpeed } = this.frames[i];
+            const offsetIndex = (this.frames[i].vertexIndex) * 4;
+            if (spindleOn) {
+                let opacity = spindleSpeed / maxSpindleValue;
+                const color = [...defaultColor.toArray(), opacity];
+                this.colors.splice(offsetIndex, 4, ...color);
+            } else {
+                const color = [...fillColor.toArray(), 0];
+                this.colors.splice(offsetIndex, 4, ...color);
+            }
+        }
+
+        /*for (let i = 0; i < this.frames.length; ++i) {
+            const { spindleOn } = this.frames[i];
+            if (spindleOn) {
+                let v1 = this.frames[i].vertexIndex;
+                console.log(`Starting spindle at frame ${i}, vertexindex ${v1}`);
+                while (i < (this.frames.length - 1) && this.frames[i].spindleOn) {
+                    ++i;
+                }
+                let v2 = this.frames[i].vertexIndex;
+                console.log(`Stopping spindle at frame ${i}, vertexindex ${v2}`);
+                for (let j = v1; j < v2; ++j) {
+                    const offsetIndex = j * 4; // Account for RGBA buffer
+                    this.colors.splice(offsetIndex, 4, ...defaultColor.toArray(), 1);
+                }
+            }
+        }*/
+    }
+
+    /* Given an array of words representing the current line, update the spindle state if it contains a S command - true if value > 0, false if 0 */
+    updateSpindleStateFromLine({ words }) {
+        const spindleMatches = words.filter((word) => word[0] === 'S');
+        const spindleCommand = spindleMatches[0];
+        if (spindleCommand) {
+            const spindleValue = spindleCommand[1];
+            this.spindleSpeeds.add(spindleValue);
+            this.spindleSpeed = spindleValue; // Assume spindle speed is consistent until next change
+            this.spindleOn = spindleValue > 0;
+        }
+    }
 
     setFrameIndex(frameIndex) {
         if (this.frames.length === 0) {
@@ -189,7 +258,7 @@ class GCodeVisualizer {
         if (v1 < v2) {
             const workpiece = this.group.children[0];
             for (let i = v1; i < v2; ++i) {
-                const offsetIndex = i * 4; // Account for RGB buffer
+                const offsetIndex = i * 4; // Account for RGBA buffer
                 workpiece.geometry.attributes.color.set([...defaultColor.toArray(), 0.3], offsetIndex);
             }
             workpiece.geometry.attributes.color.needsUpdate = true;
@@ -199,7 +268,7 @@ class GCodeVisualizer {
         if (v2 < v1) {
             const workpiece = this.group.children[0];
             for (let i = v2; i < v1; ++i) {
-                const offsetIndex = i * 4; // Account for RGB buffer
+                const offsetIndex = i * 4; // Account for RGBA buffer
                 workpiece.geometry.attributes.color.set([...this.colors.slice(offsetIndex, offsetIndex + 4)], offsetIndex);
             }
             workpiece.geometry.attributes.color.needsUpdate = true;
