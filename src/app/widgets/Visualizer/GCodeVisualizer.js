@@ -60,7 +60,7 @@ class GCodeVisualizer {
 
     render(gcode) {
         const { cuttingCoordinateLines, G0Color, G1Color, G2Color, G3Color } = this.theme;
-        const laserMode = true;
+        const laserMode = false;
 
         const defaultColor = new THREE.Color(cuttingCoordinateLines);
 
@@ -170,9 +170,6 @@ class GCodeVisualizer {
                 opacity: 0.6,
             })
         );
-
-        console.log(this.geometry);
-        console.log(workpiece.geometry);
 
         this.group.add(workpiece);
 
