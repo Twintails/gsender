@@ -204,7 +204,7 @@ class GCodeVisualizer {
                 const color = [...defaultColor.toArray(), opacity];
                 this.colors.splice(offsetIndex, 8, ...[...color, ...color]);
             } else {
-                const color = [...fillColor.toArray(), 0.2];
+                const color = [...fillColor.toArray(), 0.1];
                 this.colors.splice(offsetIndex, 8, ...[...color, ...color]);
             }
         }
